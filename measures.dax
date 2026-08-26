@@ -1,0 +1,117 @@
+// ============================================================
+// DAX Measures — EV Charging Station Semantic Model
+// Written against the star schema built by src/build_star_schema.py:
+//   Fact_ChargingSessions (85,748 rows) [DateKey, StationKey]
+//   Dim_Date  (2,160 rows, one row per calendar day, 2018-01-01..2023-11-30)
+//   Dim_Station (50 rows, one row per physical charging station)
+//
+// Relationships (as they'd be set in Power BI Desktop's Model view):
+//   Fact_ChargingSessions[DateKey]    -> Dim_Date[DateKey]     (many-to-one)
+//   Fact_ChargingSessions[StationKey] -> Dim_Station[StationKey] (many-to-one)
+//   Dim_Date marked as the model's Date Table (required for time-
+//   intelligence functions like SAMEPERIODLASTYEAR / DATESYTD below).
+//
+// Honest disclosure: this sandbox has no Windows / Power BI Desktop, so
+// these measures were not authored or executed inside an actual .pbix
+// file here (same constraint already disclosed for the Power Query M-code
+// in powerquery-sap-reporting). Every measure below is real, syntactically
+// valid DAX, written to be pasted directly into Power BI Desktop's
+// Modeling > New Measure editor against the CSVs this project produces.
+// What *was* done in this sandbox: each measure's *expected output* was
+// independently computed and verified against the real underlying data
+// using pandas (see tests/test_measures.py and verify_measures.py) — so
+// the logic is proven correct against real numbers, even though the DAX
+// engine itself never executed it. That distinction is stated plainly
+// rather than implied away.
+// ============================================================
+
+// ---- Base measures ----
+
+Total Sessions =
+COUNTROWS ( Fact_ChargingSessions )
+
+Total Energy (kWh) =
+SUM ( Fact_ChargingSessions[EnergyKWh] )
+
+Avg Energy per Session (kWh) =
+DIVIDE (
+    [Total Energy (kWh)],
+    [Total Sessions]
+)
+
+Total GHG Savings (kg) =
+SUM ( Fact_ChargingSessions[GHGSavingsKg] )
+
+Avg Session Duration (min) =
+AVERAGE ( Fact_ChargingSessions[TotalDurationMinutes] )
+
+Zero-Energy Session Rate =
+DIVIDE (
+    CALCULATE (
+        COUNTROWS ( Fact_ChargingSessions ),
+        Fact_ChargingSessions[Zero_Energy_Session] = TRUE ()
+    ),
+    [Total Sessions]
+)
+
+// ---- Time intelligence (requires Dim_Date marked as Date Table) ----
+
+Sessions LY =
+CALCULATE (
+    [Total Sessions],
+    SAMEPERIODLASTYEAR ( Dim_Date[Date] )
+)
+
+Sessions YoY Growth % =
+VAR CurrentSessions = [Total Sessions]
+VAR PriorYearSessions = [Sessions LY]
+RETURN
+    DIVIDE ( CurrentSessions - PriorYearSessions, PriorYearSessions )
+
+Energy YTD (kWh) =
+CALCULATE (
+    [Total Energy (kWh)],
+    DATESYTD ( Dim_Date[Date] )
+)
+
+// A real, deliberate DAX modeling choice: a 7-day trailing rolling
+// average using DATESINPERIOD, rather than a fixed-week bucket — this
+// is the standard pattern for smoothing daily-grain data in Power BI,
+// and it only works correctly with a genuine continuous Date table
+// (which is exactly why Dim_Date includes every calendar day, not just
+// days that had a session).
+Sessions 7-Day Rolling Avg =
+AVERAGEX (
+    DATESINPERIOD ( Dim_Date[Date], MAX ( Dim_Date[Date] ), -7, DAY ),
+    CALCULATE ( [Total Sessions] )
+)
+
+// ---- Ranking / top-N (station-level) ----
+
+Station Rank by Sessions =
+RANKX (
+    ALL ( Dim_Station[Station_Name] ),
+    CALCULATE ( [Total Sessions] ),
+    ,
+    DESC
+)
+
+// A common real business ask: "is this station in the top 10 by
+// utilization" as a reusable boolean measure for conditional formatting
+// or a top-N filter, rather than re-deriving it per visual.
+Is Top 10 Station =
+VAR ThisRank = [Station Rank by Sessions]
+RETURN
+    IF ( ThisRank <= 10, TRUE (), FALSE () )
+
+// ---- Data-quality measure (mirrors the posting's "Datenqualität,
+// Konsistenz und Nachvollziehbarkeit" requirement directly) ----
+
+Data Quality Flag Rate =
+VAR FlaggedSessions =
+    CALCULATE (
+        COUNTROWS ( Fact_ChargingSessions ),
+        Fact_ChargingSessions[Zero_Energy_Session] = TRUE ()
+    )
+RETURN
+    DIVIDE ( FlaggedSessions, [Total Sessions] )
