@@ -11,10 +11,7 @@ to dimension tables the report slices/filters by) is the baseline
 pattern DAX measures are written against, because DAX's CALCULATE/
 filter-context model is designed around exactly this shape.
 
-Honest disclosure: this schema was designed and built in this Linux
-sandbox using pandas (no Power BI Desktop / Windows available here --
-same disclosed constraint as the powerquery-sap-reporting project). The
-resulting CSVs are exactly what would be imported into Power BI Desktop
+This schema is built with pandas. The resulting CSVs are exactly what would be imported into Power BI Desktop
 as the report's data model (Get Data > Text/CSV, or a Databricks/SQL
 source in production), and the DAX measures in measures.dax are written
 against this exact schema's table/column names.

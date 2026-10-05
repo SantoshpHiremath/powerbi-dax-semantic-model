@@ -61,7 +61,7 @@ def verify_yoy(fact):
     # Cross-check 2023 specifically, since it's a partial year (through
     # Nov 30) -- a real subtlety a naive YoY comparison could get wrong
     # if it silently compared a partial year against a full prior year
-    # without noting it. Disclosed here rather than hidden.
+    # without noting it. Called out here explicitly.
     print("\nNote: 2023 is a PARTIAL year in this dataset (Jan-Nov only, data ends 2023-11-30),")
     print("so its YoY growth number is not a full 12-month comparison -- this is a real")
     print("caveat that would need a visible note in the actual Power BI report too.")
